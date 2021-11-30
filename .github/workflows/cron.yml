@@ -1,0 +1,33 @@
+name: Automagically accept repo invites to this account
+
+on:
+  # Always re-run to test lastest changes
+  push:
+    branches:
+    - main
+  schedule:
+    # Check at the 0th minute every hour
+    - cron: '0 * * * *'
+    # Check every 10 minutes during active hours, GMT+800 timezone.
+    - cron: '10-50/10 0-16 * * *'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    continue-on-error: true  # allow fail silently
+    steps:
+    - uses: actions/checkout@v2
+    - uses: actions/setup-python@v2
+      with:
+        python-version: 3.9
+    - uses: actions/cache@v2
+      with:
+        path: ~/.cache/pip
+        key: ${{ hashFiles('requirements.txt') }}
+    - name: Install dependencies
+      run: python3 -m pip install -r requirements.txt
+    - name: Run automation script
+      env:
+        ACCESS_TOKEN: ${{ secrets.ACCESS_TOKEN }}
+        SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+      run: python3 ./run.py
