@@ -1,0 +1,26 @@
+name: 'Automagically make this repository alive'
+
+on:
+  # Always re-run to test lastest changes
+  push:
+    branches:
+    - main
+  schedule:
+    # Check at the 0th minute every hour
+    - cron: '0 0 1 * *'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    continue-on-error: true  # allow fail silently
+    steps:
+    - uses: actions/checkout@v2
+    - name: Create Auto Commit
+      env:
+        ACCESS_TOKEN: ${{ secrets.ACCESS_TOKEN }}
+      run: |
+        git config --global user.name 'Bowtie Careers'
+        git config --global user.email 'careers@bowtie.com.hk'
+        git remote set-url origin https://bowtie-careers:$ACCESS_TOKEN@github.com/${{ github.repository }}
+        git commit --allow-empty -m "Auto Commit on $(date +'%Y-%m-%d')"
+        git push origin main
