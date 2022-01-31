@@ -6,7 +6,7 @@ on:
     branches:
     - main
   schedule:
-    # Automatic create empty
+    # Automatic create an empty commit on 1st of every month
     - cron: '0 0 1 * *'
 
 jobs:
