@@ -6,13 +6,13 @@ on:
     branches:
     - main
   schedule:
-    # Check at the 0th minute every hour
+    # Automatic create empty
     - cron: '0 0 1 * *'
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    continue-on-error: true  # allow fail silently
+    continue-on-error: true  # allowed to fail silently
     steps:
     - uses: actions/checkout@v2
     - name: Create Auto Commit
