@@ -1,4 +1,5 @@
 import base64
+import datetime
 import json
 import os
 
@@ -33,9 +34,19 @@ def get_notion_user_emails(database_id, created_at):
     url = f'https://api.notion.com/v1/databases/{database_id}/query'
     body = {
         'filter': {
-            'and': [
-                {'property': 'Start Date', 'date': {'on_or_before': created_at}},
-                {'property': 'End Date', 'date': {'on_or_after': created_at}},
+            'or': [
+                {
+                    'and': [
+                        {'property': 'Start Date', 'date': {'on_or_before': created_at}},
+                        {'property': 'End Date', 'date': {'on_or_after': created_at}},
+                    ]
+                },
+                {
+                    'and': [
+                        {'property': 'Start Date', 'date': {'on_or_before': today}},
+                        {'property': 'End Date', 'date': {'on_or_after': today}},
+                    ]
+                }
             ]
         }
     }
@@ -74,6 +85,7 @@ if __name__ == '__main__':
 
         if not invitation['expired']:
             try:
+                today = str(datetime.datetime.now())
                 created_at = invitation['created_at']
                 repo = invitation['repository']['full_name'].split('/')[1]
                 url = invitation['url']
