@@ -49,9 +49,7 @@ def retrieve_all_take_home_reviewers(database_id: str) -> List[str]:
             if _email:
                 emails.append(_email)
 
-    emails = list(set(emails))
-
-    return emails
+    return sorted(list(set(emails)))
 
 
 def get_next_name(invitation_id: int, names: List[str]) -> str:
