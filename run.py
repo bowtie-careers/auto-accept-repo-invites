@@ -63,7 +63,6 @@ def get_next_name(invitation_id: int, names: List[str]) -> str:
 
     # Convert the first 8 characters of the hash to an integer
     hash_int = int(hash_hex[:8], 16)
-
     index = hash_int % len(names)
 
     return names[index]
