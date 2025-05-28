@@ -34,7 +34,7 @@ def get_notion_database_id(position_query):
 
 def retrieve_all_take_home_reviewers(database_id: str) -> List[str]:
     endpoint = f'https://api.notion.com/v1/databases/{database_id}/query'
-    response = requests.post(endpoint, headers=NOTION_HEADERS).json()
+    response = requests.post(endpoint, headers=NOTION_HEADERS, timeout=30).json()
     results = response.get('results', [])
     emails = []
     for result in results:
