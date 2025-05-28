@@ -1,7 +1,9 @@
 import base64
 import datetime
+import hashlib
 import json
 import os
+from typing import List
 
 import requests
 from requests.auth import HTTPBasicAuth
@@ -28,6 +30,40 @@ def get_notion_database_id(position_query):
         if result.get('child_database', {}).get('title', '').startswith(position_query)
     ]
     return matching_ids[0].replace('-', '') if len(matching_ids) == 1 else ''
+
+
+def retrieve_all_take_home_reviewers(database_id: str) -> List[str]:
+    endpoint = f'https://api.notion.com/v1/databases/{database_id}/query'
+    response = requests.post(endpoint, headers=NOTION_HEADERS, timeout=30).json()
+    results = response.get('results', [])
+    emails = []
+    for result in results:
+        properties = result.get('properties', {})
+        columns = properties.get('Take-home Assignment', properties.get('Reviewer & Interviewer', {}))
+        if not columns:
+            continue
+
+        peoples = columns.get('people', [])
+        for people in peoples:
+            _email = people.get('person', {}).get('email', None)
+            if _email:
+                emails.append(_email)
+
+    return sorted(list(set(emails)))
+
+
+def get_next_name(invitation_id: int, names: List[str]) -> str:
+    """
+    Retrieve distinct names for every new invitation ID
+    """
+    hash_object = hashlib.md5(str(invitation_id).encode())
+    hash_hex = hash_object.hexdigest()
+
+    # Convert the first 8 characters of the hash to an integer
+    hash_int = int(hash_hex[:8], 16)
+    index = hash_int % len(names)
+
+    return names[index]
 
 
 def get_notion_user_emails(database_id, created_at):
@@ -117,15 +153,10 @@ if __name__ == '__main__':
                     else ''
                 )
                 if notion_database_id != '':
-                    notion_user_emails = get_notion_user_emails(
-                        notion_database_id, created_at
-                    )
-                    slack_user_ids = [
-                        get_slack_user_id(email) for email in notion_user_emails
-                    ]
-                    mentions = ' '.join(
-                        [f'<@{user_id}>' for user_id in slack_user_ids]
-                    ) + ' :adore:' * len(slack_user_ids)
+                    notion_user_emails = retrieve_all_take_home_reviewers(notion_database_id)
+                    email = get_next_name(invitation_id, notion_user_emails)
+                    slack_user_id = get_slack_user_id(email)
+                    mentions = f'<@{slack_user_id}> :adore-x5: '
                 else:
                     mentions = '`Engineers 404 NOT FOUND` :shock:'
                     print('No matching notion database found')
