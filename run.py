@@ -3,22 +3,23 @@ import datetime
 import hashlib
 import json
 import os
+import re
 from typing import List
 
 import requests
 from requests.auth import HTTPBasicAuth
 
-ACCESS_TOKEN = os.environ['ACCESS_TOKEN']
-SLACK_WEBHOOK = os.environ['SLACK_WEBHOOK']
-SEARCH_URL = os.environ['SEARCH_URL']
-SLACK_TOKEN = os.environ['SLACK_TOKEN']
-NOTION_TOKEN = os.environ['NOTION_TOKEN']
+ACCESS_TOKEN = os.environ.get('ACCESS_TOKEN')
+SLACK_WEBHOOK = os.environ.get('SLACK_WEBHOOK')
+SEARCH_URL = os.environ.get('SEARCH_URL')
+SLACK_TOKEN = os.environ.get('SLACK_TOKEN')
+NOTION_TOKEN = os.environ.get('NOTION_TOKEN')
 NOTION_HEADERS = {
     'Authorization': f'Bearer {NOTION_TOKEN}',
     'Notion-Version': '2022-06-28',
     'Content-Type': 'application/json',
 }
-NOTION_PAGE_ID = os.environ['NOTION_PAGE_ID']
+NOTION_PAGE_ID = os.environ.get('NOTION_PAGE_ID')
 
 
 def get_notion_database_id(position_query):
@@ -39,7 +40,9 @@ def retrieve_all_take_home_reviewers(database_id: str) -> List[str]:
     emails = []
     for result in results:
         properties = result.get('properties', {})
-        columns = properties.get('Take-home Assignment', properties.get('Reviewer & Interviewer', {}))
+        columns = properties.get(
+            'Take-home Assignment', properties.get('Reviewer & Interviewer', {})
+        )
         if not columns:
             continue
 
@@ -73,7 +76,10 @@ def get_notion_user_emails(database_id, created_at):
             'or': [
                 {
                     'and': [
-                        {'property': 'Start Date', 'date': {'on_or_before': created_at}},
+                        {
+                            'property': 'Start Date',
+                            'date': {'on_or_before': created_at},
+                        },
                         {'property': 'End Date', 'date': {'on_or_after': created_at}},
                     ]
                 },
@@ -82,7 +88,7 @@ def get_notion_user_emails(database_id, created_at):
                         {'property': 'Start Date', 'date': {'on_or_before': today}},
                         {'property': 'End Date', 'date': {'on_or_after': today}},
                     ]
-                }
+                },
             ]
         }
     }
@@ -108,6 +114,29 @@ def get_slack_user_id(user_email):
     return response.get('user').get('id')
 
 
+def extract_candidate_info_from_repo(repo_name: str):
+    '''
+    Extract candidate name and position from the repo name using regex.
+
+    return a tuple of (candidate_name, position)
+    '''
+    regex = r'^(?P<candidate_name>.+?)_(?P<position>[A-Za-z]+)_+[A-Za-z]+?_Technical_Assessment$'
+    match = re.match(regex, repo_name)
+    if not match:
+        return 'CANDIDATE_NAME_NOT_FOUND', 'POSITION_NOT_FOUND'
+
+    candidate_info = match.groupdict()
+    return (
+        candidate_info['candidate_name'].replace('_', ' '),
+        # position is only the first word in the position string
+        # eg:
+        # 'Frontend Engineer' -> 'frontend'
+        # 'Data Manager' -> 'data'
+        # 'DevOps Engineer' -> 'devops'
+        candidate_info['position'].replace('_', ' ').lower(),
+    )
+
+
 if __name__ == '__main__':
     auth = HTTPBasicAuth('bowtie-careers', ACCESS_TOKEN)
 
@@ -123,22 +152,28 @@ if __name__ == '__main__':
             try:
                 today = str(datetime.datetime.now())
                 created_at = invitation['created_at']
-                repo = invitation['repository']['full_name'].split('/')[1]
+                # repo format is `{candidate_name}_{role}_Technical_Assessment`
+                repo_name = invitation['repository']['full_name'].split('/')[1]
                 url = invitation['url']
                 repo_url = invitation['repository']['html_url']
-                name, position = (
-                    ' '.join(repo.split('_')[0:2]),
-                    ' '.join(repo.split('_')[2:-2]).lower(),
+                candidate_name, position = extract_candidate_info_from_repo(repo_name)
+
+                # to find the candidate's profile on TeamTailor
+                team_tailor_name_query = f'{{"query":"{candidate_name}","root":[]}}'
+                name_base64 = base64.b64encode(team_tailor_name_query.encode()).decode(
+                    'utf-8'
                 )
-                name_query = f'{{"query":"{name}","root":[]}}'
-                name_base64 = base64.b64encode(name_query.encode()).decode('utf-8')
                 profile_url = f'{SEARCH_URL}{name_base64}'
+
+                # to find the position in Notion
                 position_query = next(
                     (
                         query
                         for keyword, query in [
                             ('frontend', 'Frontend Engineer - Interview'),
                             ('backend', 'Backend Engineer - Interview'),
+                            ('data', 'Data Engineer/Manager'),
+                            ('ai', 'AI Engineer'),
                             ('devops', 'DevOps Engineer - Interview'),
                             ('devsecops', 'DevOps Engineer - Interview'),
                             ('intern', 'Software Engineer Intern - Interview'),
@@ -153,7 +188,9 @@ if __name__ == '__main__':
                     else ''
                 )
                 if notion_database_id != '':
-                    notion_user_emails = retrieve_all_take_home_reviewers(notion_database_id)
+                    notion_user_emails = retrieve_all_take_home_reviewers(
+                        notion_database_id
+                    )
                     email = get_next_name(invitation_id, notion_user_emails)
                     slack_user_id = get_slack_user_id(email)
                     mentions = f'<@{slack_user_id}> :adore-x5: '
