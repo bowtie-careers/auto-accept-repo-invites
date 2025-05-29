@@ -121,6 +121,7 @@ AVAILABLE_ROLE_MAPPING = {
     'data': 'Data Engineer/Manager',
     'ai': 'AI Engineer',
     'devops': 'DevOps Engineer',
+    'intern': 'Software Engineer Intern',
 }
 
 
