@@ -114,26 +114,40 @@ def get_slack_user_id(user_email):
     return response.get('user').get('id')
 
 
+AVAILABLE_ROLE_MAPPING = {
+    # keyword -> notion database name
+    'frontend': 'Frontend Engineer',
+    'backend': 'Backend Engineer',
+    'data': 'Data Engineer/Manager',
+    'ai': 'AI Engineer',
+    'devops': 'DevOps Engineer',
+}
+
+
 def extract_candidate_info_from_repo(repo_name: str):
     '''
     Extract candidate name and position from the repo name using regex.
 
     return a tuple of (candidate_name, position)
     '''
-    regex = r'^(?P<candidate_name>.+?)_(?P<position>[A-Za-z]+)_+[A-Za-z]+?_Technical_Assessment$'
+    regex = r'^(?P<candidate_name>[A-Za-z]+_+[A-Za-z]+)_\w+_Technical_Assessment$'
+
+    role = 'POSITION_NOT_FOUND'
+
+    # find if any available role mapping matches the position
+    for keyword, _ in AVAILABLE_ROLE_MAPPING.items():
+        if keyword in repo_name.lower():
+            role = AVAILABLE_ROLE_MAPPING[keyword]
+            break
+
     match = re.match(regex, repo_name)
     if not match:
-        return 'CANDIDATE_NAME_NOT_FOUND', 'POSITION_NOT_FOUND'
+        return 'CANDIDATE_NAME_NOT_FOUND', role
 
     candidate_info = match.groupdict()
     return (
         candidate_info['candidate_name'].replace('_', ' '),
-        # position is only the first word in the position string
-        # eg:
-        # 'Frontend Engineer' -> 'frontend'
-        # 'Data Manager' -> 'data'
-        # 'DevOps Engineer' -> 'devops'
-        candidate_info['position'].replace('_', ' ').lower(),
+        role,
     )
 
 
@@ -165,26 +179,9 @@ if __name__ == '__main__':
                 )
                 profile_url = f'{SEARCH_URL}{name_base64}'
 
-                # to find the position in Notion
-                position_query = next(
-                    (
-                        query
-                        for keyword, query in [
-                            ('frontend', 'Frontend Engineer - Interview'),
-                            ('backend', 'Backend Engineer - Interview'),
-                            ('data', 'Data Engineer/Manager'),
-                            ('ai', 'AI Engineer'),
-                            ('devops', 'DevOps Engineer - Interview'),
-                            ('devsecops', 'DevOps Engineer - Interview'),
-                            ('intern', 'Software Engineer Intern - Interview'),
-                        ]
-                        if keyword in position
-                    ),
-                    '',
-                )
                 notion_database_id = (
-                    get_notion_database_id(position_query)
-                    if position_query != ''
+                    get_notion_database_id(position)
+                    if position != 'POSITION_NOT_FOUND'
                     else ''
                 )
                 if notion_database_id != '':
