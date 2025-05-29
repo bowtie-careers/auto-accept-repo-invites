@@ -34,6 +34,10 @@ class TestRun(unittest.TestCase):
                 "Charlie_Brown_Software_Engineer",
                 ("CANDIDATE_NAME_NOT_FOUND", "POSITION_NOT_FOUND"),
             ),
+            (
+                "Charlie_Brown_Software_Engineer_Intern_Technical_Assessment",
+                ("Charlie Brown", "Software Engineer Intern"),
+            ),
         ]
 
         for repo_name, expected in test_cases:
