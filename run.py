@@ -5,7 +5,7 @@ import json
 import os
 import re
 from typing import List
-
+import random
 import requests
 from requests.auth import HTTPBasicAuth
 
@@ -114,6 +114,36 @@ def get_slack_user_id(user_email):
     return response.get('user').get('id')
 
 
+def send_slack_message(message: str, timeout: int = 10) -> requests.Response:
+    response = requests.post(
+        SLACK_WEBHOOK,
+        data=json.dumps({'text': message}),
+        headers={'Content-Type': 'application/json'},
+        timeout=timeout,
+    )
+    print(f'Slack notification sent - Status: {response.status_code}')
+
+    return response
+
+# for some reason, notion api sometimes fail to return users,
+# so we have a hardcoded list as fallback
+back_backend_fallback_reviewer = [
+    "@Kiros",
+    "@david.lai",
+    "@Kevin Wongso",
+    "@Jake Yu",
+    "@Tony Cheng",
+    "@Adrian",
+]
+frontend_fallback_reviewer = [
+    "@andrew.mok",
+    "@Sean Zhou",
+    "@William Ho",
+    "@Anson Heung",
+    "@Mars",
+    "@Ling"
+]
+
 AVAILABLE_ROLE_MAPPING = {
     # keyword -> notion database name
     'frontend': 'Frontend Engineer',
@@ -124,6 +154,7 @@ AVAILABLE_ROLE_MAPPING = {
     'intern': 'Software Engineer Intern',
 }
 
+HR_NAME = '@susan.wong'
 
 def extract_candidate_info_from_repo(repo_name: str):
     '''
@@ -163,79 +194,75 @@ if __name__ == '__main__':
     for invitation in invitations:
         invitation_id = invitation['id']
 
-        if not invitation['expired']:
-            try:
-                today = str(datetime.datetime.now())
-                created_at = invitation['created_at']
-                # repo format is `{candidate_name}_{role}_Technical_Assessment`
-                repo_name = invitation['repository']['full_name'].split('/')[1]
-                url = invitation['url']
-                repo_url = invitation['repository']['html_url']
-                candidate_name, position = extract_candidate_info_from_repo(repo_name)
+        today = str(datetime.datetime.now())
+        created_at = invitation['created_at']
+        repo_name = invitation['repository']['full_name'].split('/')[1]
+        url = invitation['url']
+        repo_url = invitation['repository']['html_url']
 
-                # to find the candidate's profile on TeamTailor
-                team_tailor_name_query = f'{{"query":"{candidate_name}","root":[]}}'
-                name_base64 = base64.b64encode(team_tailor_name_query.encode()).decode(
-                    'utf-8'
-                )
-                profile_url = f'{SEARCH_URL}{name_base64}'
 
-                notion_database_id = (
-                    get_notion_database_id(position)
-                    if position != 'POSITION_NOT_FOUND'
-                    else ''
-                )
-                if notion_database_id != '':
-                    notion_user_emails = retrieve_all_take_home_reviewers(
-                        notion_database_id
-                    )
-                    email = get_next_name(invitation_id, notion_user_emails)
-                    slack_user_id = get_slack_user_id(email)
-                    mentions = f'<@{slack_user_id}> :adore-x5: '
-                else:
-                    mentions = '`Engineers 404 NOT FOUND` :shock:'
-                    print('No matching notion database found')
+        candidate_name, position = extract_candidate_info_from_repo(repo_name)
+        team_tailor_name_query = f'{{"query":"{candidate_name}","root":[]}}'
+        name_base64 = base64.b64encode(team_tailor_name_query.encode()).decode(
+            'utf-8'
+        )
+        profile_url = f'{SEARCH_URL}{name_base64}'
 
-                print(
-                    f'Accepting invitation ID {invitation_id} via {url}, '
-                    f'invited at {created_at}...',
-                )
-
-                # Send alert to Slack
-                slack_response = requests.post(
-                    SLACK_WEBHOOK,
-                    data=json.dumps(
-                        {
-                            'text': '\n'.join(
-                                [
-                                    'New assessment from candidate has been submitted at ',
-                                    f'`{created_at}` :tada:',
-                                    repo_url,
-                                    profile_url,
-                                    mentions,
-                                ]
-                            ),
-                        }
-                    ),
-                    headers={'Content-Type': 'application/json'},
-                )
-
-                # Accept the invitation
-                accept_invitation_response = requests.patch(url, auth=auth)
-
-                print(
-                    f'Responses: Slack - {slack_response.status_code}, '
-                    f'GitHub - {accept_invitation_response.status_code}',
-                )
-
-            except Exception as exc:
-                print(
-                    'Error occurred when accepting invitation for invitation '
-                    f'{invitation_id} - {exc.__class__.__name__}',
-                )
-
-        else:
-            print(
-                f'Skipped handling invitation {invitation_id} '
-                'because the invitation has expired',
+        if position == 'POSITION_NOT_FOUND' or candidate_name == 'CANDIDATE_NAME_NOT_FOUND':
+            send_slack_message(
+                f'Cannot extract candidate name or position from repo `{repo_name}`. '
+                f'{profile_url} \n{HR_NAME}'
             )
+            accept_invitation_response = requests.patch(url, auth=auth, timeout=10)
+            continue
+     
+
+        if invitation['expired']:
+            send_slack_message(
+                f'Invitation for candidate `{candidate_name}` has expired. '
+                f'{profile_url} \n{HR_NAME}'
+            )
+            continue
+
+
+        notion_database_id = (
+            get_notion_database_id(position)
+            if position != 'POSITION_NOT_FOUND'
+            else ''
+        )
+        if not notion_database_id:
+            send_slack_message(
+                f'Reviewer not found for position: {position} '
+                f'while processing candidate `{candidate_name}`. '
+                f'{profile_url} \n{HR_NAME}'
+            )
+            accept_invitation_response = requests.patch(url, auth=auth, timeout=10)
+            continue
+
+
+        notion_user_emails = retrieve_all_take_home_reviewers(notion_database_id)
+        if notion_user_emails:
+            email = get_next_name(invitation_id, notion_user_emails)
+            slack_user_id = get_slack_user_id(email)
+            mentions = f'<@{slack_user_id}> :adore-x5: '
+        else:
+            print(f'No reviewers found in Notion database for position: {position}')
+            if 'backend' in position:
+                mentions = ' '.join(random.choice(back_backend_fallback_reviewer)) + ' :adore-x5: '
+            elif 'frontend' in position:
+                mentions = ' '.join(random.choice(frontend_fallback_reviewer)) + ' :adore-x5: '
+            else:
+                mentions = '`Engineers 404 NOT FOUND` :shock:'
+      
+        message = '\n'.join(
+            [
+                'New assessment from candidate has been submitted at ',
+                f'`{created_at}` :tada:',
+                repo_url,
+                profile_url,
+                mentions,
+            ]
+        )
+        send_slack_message(message)
+        accept_invitation_response = requests.patch(url, auth=auth, timeout=10)
+         

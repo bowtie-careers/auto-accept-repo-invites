@@ -1,0 +1,7 @@
+
+
+# add configuration for black formatter to use singlequote only
+
+[tool.black]
+line-length = 88
+skip-string-normalization = true
