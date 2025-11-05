@@ -154,7 +154,7 @@ AVAILABLE_ROLE_MAPPING = {
     'intern': 'Software Engineer Intern',
 }
 
-HR_NAME = '@susan.wong'
+HR_NAME = '@Susan Wong'
 
 def extract_candidate_info_from_repo(repo_name: str):
     '''
@@ -162,6 +162,7 @@ def extract_candidate_info_from_repo(repo_name: str):
 
     return a tuple of (candidate_name, position)
     '''
+    repo_name.replace('-', '_')
     regex = r'^(?P<candidate_name>[A-Za-z]+_+[A-Za-z]+)_\w+_Technical_Assessment$'
 
     role = 'POSITION_NOT_FOUND'
@@ -210,8 +211,8 @@ if __name__ == '__main__':
 
         if position == 'POSITION_NOT_FOUND' or candidate_name == 'CANDIDATE_NAME_NOT_FOUND':
             send_slack_message(
-                f'Cannot extract candidate name or position from repo `{repo_name}`. '
-                f'{profile_url} \n{HR_NAME}'
+                f'Cannot extract candidate name or position from repo `{repo_url}`. '
+                f'\n{profile_url} \n{HR_NAME}'
             )
             accept_invitation_response = requests.patch(url, auth=auth, timeout=10)
             continue
@@ -220,7 +221,7 @@ if __name__ == '__main__':
         if invitation['expired']:
             send_slack_message(
                 f'Invitation for candidate `{candidate_name}` has expired. '
-                f'{profile_url} \n{HR_NAME}'
+                f'\n{repo_url} \n{profile_url} \n{HR_NAME}'
             )
             continue
 
@@ -234,7 +235,7 @@ if __name__ == '__main__':
             send_slack_message(
                 f'Reviewer not found for position: {position} '
                 f'while processing candidate `{candidate_name}`. '
-                f'{profile_url} \n{HR_NAME}'
+                f'{profile_url}\n repo url {repo_url}\n \n{HR_NAME}'
             )
             accept_invitation_response = requests.patch(url, auth=auth, timeout=10)
             continue
