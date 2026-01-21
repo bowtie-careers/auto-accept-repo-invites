@@ -162,7 +162,8 @@ def extract_candidate_info_from_repo(repo_name: str):
 
     return a tuple of (candidate_name, position)
     '''
-    regex = r'^(?P<candidate_name>[A-Za-z]+_+[A-Za-z]+)_\w+_Technical_Assessment$'
+    # Updated regex to handle hyphens in names (e.g., Bar-Jhon)
+    regex = r'^(?P<candidate_name>[A-Za-z\-]+_+[A-Za-z\-]+)_\w+_Technical_Assessment$'
 
     role = 'POSITION_NOT_FOUND'
 
@@ -174,7 +175,15 @@ def extract_candidate_info_from_repo(repo_name: str):
 
     match = re.match(regex, repo_name)
     if not match:
-        return 'CANDIDATE_NAME_NOT_FOUND', role
+        # Try to extract at least the first part before _Technical_Assessment
+        fallback_match = re.match(r'^([A-Za-z\-_]+)', repo_name)
+        if fallback_match:
+            # Extract the first few words as a fallback name
+            partial_name = fallback_match.group(1).replace('_', ' ')
+            # Limit to first 2-3 words to avoid including too much
+            name_parts = partial_name.split()[:2]
+            return ' '.join(name_parts), role
+        return None, role
 
     candidate_info = match.groupdict()
     return (
@@ -202,26 +211,32 @@ if __name__ == '__main__':
 
 
         candidate_name, position = extract_candidate_info_from_repo(repo_name)
-        team_tailor_name_query = f'{{"query":"{candidate_name}","root":[]}}'
-        name_base64 = base64.b64encode(team_tailor_name_query.encode()).decode(
-            'utf-8'
-        )
-        profile_url = f'{SEARCH_URL}{name_base64}'
 
-        if position == 'POSITION_NOT_FOUND' or candidate_name == 'CANDIDATE_NAME_NOT_FOUND':
-            send_slack_message(
-                f'Cannot extract candidate name or position from repo `{repo_name}`. '
-                f'{profile_url} \n{HR_NAME}'
+        # Generate TeamTailor URL only if candidate name is found
+        profile_url = None
+        if candidate_name:
+            team_tailor_name_query = f'{{"query":"{candidate_name}","root":[]}}'
+            name_base64 = base64.b64encode(team_tailor_name_query.encode()).decode(
+                'utf-8'
             )
+            profile_url = f'{SEARCH_URL}{name_base64}'
+
+        if position == 'POSITION_NOT_FOUND' or not candidate_name:
+            message = f'Cannot extract candidate name or position from repo `{repo_name}`.'
+            if profile_url:
+                message += f' {profile_url}'
+            message += f' \n{HR_NAME}'
+            send_slack_message(message)
             accept_invitation_response = requests.patch(url, auth=auth, timeout=10)
             continue
      
 
         if invitation['expired']:
-            send_slack_message(
-                f'Invitation for candidate `{candidate_name}` has expired. '
-                f'{profile_url} \n{HR_NAME}'
-            )
+            message = f'Invitation for candidate `{candidate_name}` has expired.'
+            if profile_url:
+                message += f' {profile_url}'
+            message += f' \n{HR_NAME}'
+            send_slack_message(message)
             continue
 
 
@@ -231,11 +246,14 @@ if __name__ == '__main__':
             else ''
         )
         if not notion_database_id:
-            send_slack_message(
+            message = (
                 f'Reviewer not found for position: {position} '
-                f'while processing candidate `{candidate_name}`. '
-                f'{profile_url} \n{HR_NAME}'
+                f'while processing candidate `{candidate_name}`.'
             )
+            if profile_url:
+                message += f' {profile_url}'
+            message += f' \n{HR_NAME}'
+            send_slack_message(message)
             accept_invitation_response = requests.patch(url, auth=auth, timeout=10)
             continue
 
@@ -254,15 +272,15 @@ if __name__ == '__main__':
             else:
                 mentions = '`Engineers 404 NOT FOUND` :shock:'
       
-        message = '\n'.join(
-            [
-                'New assessment from candidate has been submitted at ',
-                f'`{created_at}` :tada:',
-                repo_url,
-                profile_url,
-                mentions,
-            ]
-        )
+        message_parts = [
+            'New assessment from candidate has been submitted at ',
+            f'`{created_at}` :tada:',
+            repo_url,
+        ]
+        if profile_url:
+            message_parts.append(profile_url)
+        message_parts.append(mentions)
+        message = '\n'.join(message_parts)
         send_slack_message(message)
         accept_invitation_response = requests.patch(url, auth=auth, timeout=10)
          
