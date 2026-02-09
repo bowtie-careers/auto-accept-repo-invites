@@ -41,7 +41,10 @@ def retrieve_all_take_home_reviewers(database_id: str) -> List[str]:
     for result in results:
         properties = result.get('properties', {})
         columns = properties.get(
-            'Take-home Assignment', properties.get('Reviewer & Interviewer', {})
+            'Take-home Assessment',
+            properties.get(
+                'Take-home Assignment', properties.get('Reviewer & Interviewer', {})
+            ),
         )
         if not columns:
             continue
@@ -265,9 +268,9 @@ if __name__ == '__main__':
             mentions = f'<@{slack_user_id}> :adore-x5: '
         else:
             print(f'No reviewers found in Notion database for position: {position}')
-            if 'backend' in position:
+            if 'backend' in position.lower():
                 mentions = ' '.join(random.choice(back_backend_fallback_reviewer)) + ' :adore-x5: '
-            elif 'frontend' in position:
+            elif 'frontend' in position.lower():
                 mentions = ' '.join(random.choice(frontend_fallback_reviewer)) + ' :adore-x5: '
             else:
                 mentions = '`Engineers 404 NOT FOUND` :shock:'
